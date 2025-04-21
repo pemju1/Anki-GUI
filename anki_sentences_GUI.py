@@ -15,6 +15,7 @@ import os
 # List the two available decks.
 DECKS = ["Wörter(aus Wörterbuch)", "Japanisch Wörter"]
 ANKI_CONNECT_URL = "http://localhost:8765"
+COUNT_PER_SOURCE = 5 #Number IMages per source
 
 def generate_furigana_html(sentence_str: str) -> str:
     kks = pykakasi.kakasi()
@@ -419,7 +420,7 @@ class AnkiGUI(tk.Tk):
         print(f"Searching online images for: {self.current_word}")
         try:
             # TODO: Make count configurable?
-            self.image_results = image_search.search_images(self.current_word, count_per_source=4)
+            self.image_results = image_search.search_images(self.current_meaning, count_per_source = COUNT_PER_SOURCE)
         except Exception as e:
             print(f"Error fetching online images: {e}")
             tk.Label(self.image_display_inner_frame, text="Error fetching images.").pack()
