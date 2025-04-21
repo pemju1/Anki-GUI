@@ -1,9 +1,9 @@
 import re
 import tkinter as tk
 from tkinter import ttk, messagebox
-import get_anki_data
-import example_sentances.sentance_ai as sentence
-import TTS.generate_audio as TTS
+import Libary.get_anki_data as get_anki_data
+import Libary.sentance_ai as sentence
+import Libary.generate_audio as TTS
 import pykakasi
 
 # List the two available decks.
@@ -274,9 +274,9 @@ class AnkiGUI(tk.Tk):
         note_id = self.notes[self.current_index]['noteId']
         
         output_filename1 = f"_audio_{note_id}_1.mp3"
-        TTS.stor_note_audio_in_anki(self.sentence1_jp, output_filename1)
+        TTS.store_note_audio_in_anki(self.sentence1_jp, output_filename1)
         output_filename2 = f"_audio_{note_id}_2.mp3"
-        TTS.stor_note_audio_in_anki(self.sentence2_jp, output_filename2)
+        TTS.store_note_audio_in_anki(self.sentence2_jp, output_filename2)
 
         return output_filename1, output_filename2
 

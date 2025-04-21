@@ -48,9 +48,9 @@ def query_ollama(system_prompt, user_input, model="gemma3:latest"):
         print(f"An error occurred: {err}")
 
 def ollama_sentances(word, dictionary, model_name, user_input=None):    
-    system_prompt = read_txt(r"example_sentances\system_prompt.txt")
+    system_prompt = read_txt(r"Prompts\system_prompt.txt")
     if user_input is None:
-        user_input = read_txt(r"example_sentances\user_prompt.txt").format(vocabulary=word,dictionary=dictionary)
+        user_input = read_txt(r"Prompts\user_prompt.txt").format(vocabulary=word,dictionary=dictionary)
 
     while True:
         example_sentances_list = []

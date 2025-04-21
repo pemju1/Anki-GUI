@@ -1,52 +1,46 @@
 import requests
-import re
+import subprocess
+import sys
+import time
+import os
 import base64
 
 # Configuration
-ANKI_CONNECT_URL = "http://localhost:8765"
-DECK_NAME = "Wörter(aus Wörterbuch)"
-TTS_URL = "http://localhost:5050/v1/audio/speech"
+ANKI_CONNECT_URL        = "http://localhost:8765"
+TTS_URL                 = "http://localhost:5050/v1/audio/speech"
+SERVER_SCRIPT_PATH      = r"C:\Users\samue\Desktop\Pogramierung\Python Projekte\Anki\TTS\openai-edge-tts\app\server.py"
+SERVER_STARTUP_WAIT_TIME = 5  # seconds
 
-def get_deck_info():
-    # Get all cards in the deck
-    note_ids = invoke('findNotes', query=f'deck:"{DECK_NAME}"')['result']
-    
-    # Count total cards
-    total_notes = len(note_ids)
-
-    #all Cards
-    all_notes = invoke('notesInfo', notes=note_ids)['result']
-    
-    return {
-        "total_notes": total_notes,
-        "allNotes": all_notes
+def start_tts_server():
+    """
+    Launches the TTS server script in the background, waits for it to spin up.
+    """
+    # Make sure the script exists
+    if not os.path.isfile(SERVER_SCRIPT_PATH):
+        raise FileNotFoundError(f"TTS server script not found at {SERVER_SCRIPT_PATH}")
+    # Use the same Python interpreter that’s running this script
+    cmd = [sys.executable, SERVER_SCRIPT_PATH]
+    kwargs = {
+        "cwd": os.path.dirname(SERVER_SCRIPT_PATH),
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
     }
 
-def invoke(action, **params):
-    response = requests.post(ANKI_CONNECT_URL, json={'action': action, 'version': 6, 'params': params})
-    return response.json()
+    if os.name == "nt":
+        # Only DETACHED_PROCESS, so we truly detach without creating a new console.
+        DETACHED_PROCESS = 0x00000008
+        kwargs["creationflags"] = DETACHED_PROCESS
 
-def save_TTS(input_text, output_name):
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer your_api_key_here"
-    }
-    payload = {
-        "model": "tts-1",
-        "input": input_text,
-        "voice": "ja-JP-KeitaNeural"
-    }
-
-    response = requests.post(TTS_URL, headers=headers, json=payload)
-
-    if response.status_code == 200:
-        with open("speech.mp3", "wb") as f:
-            f.write(response.content)
-        print("Audio saved as speech.mp3")
-    else:
-        print(f"Request failed with status {response.status_code}: {response.text}")
+    subprocess.Popen(cmd, **kwargs)
+    # Give it a moment to start up
+    print(f"Starting TTS server, waiting {SERVER_STARTUP_WAIT_TIME}s...")
+    time.sleep(SERVER_STARTUP_WAIT_TIME)
 
 def create_TTS(input_text):
+    """
+    Sends text to the TTS server and returns raw audio bytes.
+    If the server isn't reachable, starts it and retries once.
+    """
     headers = {
         "Content-Type": "application/json",
         "Authorization": "Bearer your_api_key_here"
@@ -57,97 +51,41 @@ def create_TTS(input_text):
         "voice": "ja-JP-KeitaNeural",
         "speed": 0.8
     }
-    response = requests.post(TTS_URL, headers=headers, json=payload)
+
+    try:
+        response = requests.post(TTS_URL, headers=headers, json=payload)
+    except requests.exceptions.ConnectionError:
+        # Try to start the server and retry once
+        start_tts_server()
+        response = requests.post(TTS_URL, headers=headers, json=payload)
+
     if response.status_code == 200:
-        return response.content  # Return audio bytes directly
+        return response.content  # audio bytes
     else:
-        print(f"TTS request failed with status {response.status_code}: {response.text}")
+        print(f"TTS request failed: {response.status_code} — {response.text}")
         return None
 
-def remove_illegal_filename_chars(input_str, replace_with=""):
-    """
-    Removes characters that are illegal in filenames on Windows, Linux, and MacOS.
-    
-    :param input_str: The input string to clean.
-    :param replace_with: The character(s) to replace illegal characters with (default is empty string).
-    :return: A cleaned string with illegal characters removed.
-    """
-    # Define illegal characters for Windows, Linux, and MacOS
-    illegal_chars_windows = r'<>:"/\|?*'  # Windows illegal characters
-    illegal_chars_unix = r'/'             # Linux/Unix illegal character
-    illegal_chars_mac = r':'              # MacOS illegal character
-    
-    # Combine all illegal characters into a regex pattern
-    illegal_chars_pattern = f'[{re.escape(illegal_chars_windows + illegal_chars_unix + illegal_chars_mac)}]'
-    
-    # Remove illegal characters using regex
-    cleaned_str = re.sub(illegal_chars_pattern, replace_with, input_str)
-    
-    # Remove control characters (ASCII 0-31)
-    cleaned_str = re.sub(r'[\x00-\x1F\x7F]', replace_with, cleaned_str)
-    
-    return cleaned_str   
+def invoke(action, **params):
+    response = requests.post(
+        ANKI_CONNECT_URL,
+        json={'action': action, 'version': 6, 'params': params}
+    )
+    return response.json()
 
-def update_note_audio(note_id, sentence_text, output_filename):
+def store_note_audio_in_anki(sentence_text, output_filename):
     """
     Generates TTS audio for a sentence (without saving to disk), encodes it,
-    stores it in Anki via AnkiConnect, and updates the note's Audio field.
+    stores it in Anki via AnkiConnect.
     """
-    # Get audio data from TTS service
     audio_data = create_TTS(sentence_text)
-    if audio_data is None:
-        return
+    if not audio_data:
+        print("❌ TTS failed — skipping this note.")
+        return None
 
-    # Base64-encode the audio data for AnkiConnect
-    import base64
+    # Base64-encode for AnkiConnect
     b64_data = base64.b64encode(audio_data).decode('utf-8')
-
-    # Store the media file in Anki's media collection
-    media_result = invoke("storeMediaFile", filename="_"+output_filename, data=b64_data)
-    #print(f"Media file store result for note {note_id}: {media_result}")
-
-    # Update the note's "Audio" field with the sound reference (e.g., [sound:filename.mp3])
-    update_result = invoke("updateNoteFields", note={"id": note_id, "fields": {"Audio": f"[sound:{output_filename}]"}})
-    #print(f"Note update result for note {note_id}: {update_result}")
-
-def stor_note_audio_in_anki(sentence_text, output_filename):
-    """
-    Generates TTS audio for a sentence (without saving to disk), encodes it,
-    stores it in Anki via AnkiConnect, and updates the note's Audio field.
-    """
-    # Get audio data from TTS service
-    audio_data = create_TTS(sentence_text)
-    if audio_data is None:
-        return
-
-    # Base64-encode the audio data for AnkiConnect
-    import base64
-    b64_data = base64.b64encode(audio_data).decode('utf-8')
-
-    # Store the media file in Anki's media collection
-    media_result = invoke("storeMediaFile", filename=output_filename, data=b64_data)
-    print(media_result)
-    
+    result = invoke("storeMediaFile", filename=output_filename, data=b64_data)
+    print("Anki media store result:", result)
     return output_filename
 
-if __name__ == "__main__":
-    info = get_deck_info()
-    print(f"Deck: {DECK_NAME}")
-    
-    # (Optional) print a sample of the deck info
-    print("\nSample Note:")
-    for i, card in enumerate(info['allNotes'], 1):
-        print(f"\nCard {i}:")
-        print(card)
-        if i > 4: break
-
-    # Process each note: if it has a Sentence field, generate and attach audio.
-    for card in info['allNotes']:
-        # Retrieve the sentence text from the note (adjust field name if necessary)
-        sentence_text = card['fields'].get('Sentence', {}).get('value', '').strip()
-        if sentence_text:
-            note_id = card['noteId']
-            # Use a sanitized version of part of the sentence or note id for a unique filename.
-            # Here we simply use the note id.
-            output_filename = f"audio_{note_id}.mp3"
-            update_note_audio(note_id, sentence_text, output_filename)
+# …rest of your script…
