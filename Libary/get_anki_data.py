@@ -59,24 +59,28 @@ def update_note_full(note_id: int, sentence1_jp_html: str, sentence1_en: str,
         audio2_filename: Filename for sentence 2 audio (or None).
         image_filename: Filename for the image (or None).
         image_data_b64: Base64 encoded image data (or None).
-        image_html: HTML tag for the image field (e.g., '<img src="filename.jpg">').
     """
     # 1. Store the image file if data is provided
+    image_stored_successfully = False # Flag to track storage success
     if image_filename and image_data_b64:
         try:
             store_media_file(filename=image_filename, data_b64=image_data_b64)
             print(f"Successfully stored image: {image_filename}")
+            image_stored_successfully = True # Set flag on success
         except Exception as e:
             print(f"Error storing image {image_filename}: {e}")
+            # Keep image_stored_successfully as False
 
     # 2. Prepare the fields dictionary for update
+    image_html = f'<img src="{image_filename}">' if image_stored_successfully else "" # Construct tag only if stored
+
     fields_to_update = {
         "Sentence": sentence1_jp_html,
         "SentenceMeaning": sentence1_en,
         "Sentence2": sentence2_jp_html,
         "Sentence2Meaning": sentence2_en,
         "Link2": url,
-        "Image": f'<img src="{image_filename}">' # Use the prepared HTML tag (might be empty if storage failed)
+        "Image": image_html # Use the conditionally constructed tag
     }
 
     # Add audio fields only if filenames are provided
