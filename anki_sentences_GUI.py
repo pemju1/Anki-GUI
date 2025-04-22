@@ -11,6 +11,8 @@ from PIL import Image, ImageTk, ImageGrab # Added ImageGrab
 import io
 import base64
 import os
+import threading # Import threading
+import time
 
 # List the two available decks.
 DECKS = ["Wörter(aus Wörterbuch)", "Japanisch Wörter"]
@@ -89,6 +91,9 @@ class AnkiGUI(tk.Tk):
         self.selected_local_image_path = None # Stores file path if source is 'local'
         self.pasted_image_object = None # Stores PIL Image object if source is 'clipboard'
 
+        # Lock for thread-safe Anki updates if needed (optional for now)
+        # self.anki_update_lock = threading.Lock()
+
         self.create_widgets()
 
     def create_widgets(self):
@@ -144,6 +149,13 @@ class AnkiGUI(tk.Tk):
         tk.Button(nav_frame, text="Next", command=self.show_next_note).pack(side=tk.LEFT, padx=5)
         tk.Button(nav_frame, text="Skip", command=self.skip_to_next_note).pack(side=tk.LEFT, padx=5)
 
+        # Jump to note widgets
+        tk.Label(nav_frame, text="Go to:").pack(side=tk.LEFT, padx=(15, 2)) # Add some left padding
+        self.jump_entry = tk.Entry(nav_frame, width=5)
+        self.jump_entry.pack(side=tk.LEFT)
+        tk.Button(nav_frame, text="Go", command=self.jump_to_note).pack(side=tk.LEFT, padx=2)
+
+
         # Progress frame.
         progress_frame = tk.Frame(self)
         progress_frame.pack(pady=5, fill=tk.X, padx=10)
@@ -175,7 +187,7 @@ class AnkiGUI(tk.Tk):
         self.progress_bar['maximum'] = total
         self.progress_bar['value'] = current
 
-    def display_current_note(self):
+    def display_current_note(self, update_images=True):
         # Clear existing widgets.
         for widget in self.note_display_frame.winfo_children():
             widget.destroy()
@@ -235,7 +247,8 @@ class AnkiGUI(tk.Tk):
 
         # --- Image Display Logic ---
         # Display previously selected image if navigating back/forward, otherwise fetch online
-        self.display_images()
+        if update_images:
+            self.display_images()
 
         # Update progress display.
         self.update_progress()
@@ -310,7 +323,7 @@ class AnkiGUI(tk.Tk):
         # Store the updated sentences.
         self.generated_sentences[note_id] = (current_jp1, current_en1, current_jp2, current_en2)
         # Re-display the note (this will visually reset checkboxes initially).
-        self.display_current_note()
+        self.display_current_note(update_images=False)
         # Restore the checkbox state AFTER display_current_note has run.
         self.keep_var1.set(keep1_state)
         self.keep_var2.set(keep2_state)
@@ -496,138 +509,209 @@ class AnkiGUI(tk.Tk):
         print(f"Selected online image: {self.selected_image_url}")
 
 
-    def send_to_anki(self):
-        """Prepares audio and selected image data (from any source) for Anki update."""
-        note_id = self.notes[self.current_index]['noteId']
+    def _prepare_anki_data(self, note_id, sentence1_jp, sentence2_jp, image_source, selected_image_url, selected_local_path, pasted_image_obj):
+        """
+        Prepares audio and image data in the background thread.
+        Accepts necessary data as arguments instead of relying on self.
+        Returns: (audio_filename1, audio_filename2, image_filename, image_data_b64)
+        """
         audio_filename1 = None
         audio_filename2 = None
         image_filename = None
         image_data_b64 = None # Base64 encoded image data
 
-        # --- Generate Audio (No changes needed here) ---
-        if self.sentence1_jp:
+        # --- Generate Audio ---
+        if sentence1_jp:
             audio_filename1 = f"_audio_{note_id}_1.mp3"
             try:
-                TTS.store_note_audio_in_anki(self.sentence1_jp, audio_filename1)
+                TTS.store_note_audio_in_anki(sentence1_jp, audio_filename1)
             except Exception as e:
-                print(f"Error generating audio 1: {e}")
-                messagebox.showwarning("Audio Error", f"Failed to generate audio for sentence 1: {e}")
+                print(f"Background: Error generating audio 1: {e}")
+                # Avoid messagebox in thread
                 audio_filename1 = None
 
-        if self.sentence2_jp:
+        if sentence2_jp:
             audio_filename2 = f"_audio_{note_id}_2.mp3"
             try:
-                TTS.store_note_audio_in_anki(self.sentence2_jp, audio_filename2)
+                TTS.store_note_audio_in_anki(sentence2_jp, audio_filename2)
             except Exception as e:
-                print(f"Error generating audio 2: {e}")
-                messagebox.showwarning("Audio Error", f"Failed to generate audio for sentence 2: {e}")
+                print(f"Background: Error generating audio 2: {e}")
+                # Avoid messagebox in thread
                 audio_filename2 = None
 
         # --- Prepare Image Data based on Source ---
-        if self.image_source == 'online' and self.selected_image_url:
+        if image_source == 'online' and selected_image_url:
             try:
-                print(f"Downloading online image: {self.selected_image_url}")
-                response = requests.get(self.selected_image_url, timeout=15)
-                response.raise_for_status()
+                print(f"Background: Downloading online image: {selected_image_url}")
+                response = requests.get(selected_image_url, timeout=15)
+                response.raise_for_status() # Check for HTTP errors
                 image_data = response.content
                 image_data_b64 = base64.b64encode(image_data).decode('utf-8')
-                # Determine extension
+                # Determine extension (using selected_image_url passed as argument)
                 content_type = response.headers.get('content-type', '').lower()
                 if 'jpeg' in content_type or 'jpg' in content_type: ext = '.jpg'
                 elif 'png' in content_type: ext = '.png'
                 elif 'gif' in content_type: ext = '.gif'
-                else: ext = os.path.splitext(self.selected_image_url)[1] or '.jpg' # Guess from URL or default
+                else: ext = os.path.splitext(selected_image_url)[1] or '.jpg' # Guess from URL or default
                 image_filename = f"_image_{note_id}{ext}"
-                print(f"Prepared online image: {image_filename}")
+                print(f"Background: Prepared online image: {image_filename}")
             except Exception as e:
-                print(f"Error processing online image {self.selected_image_url}: {e}")
-                messagebox.showerror("Image Error", f"Failed to download/process selected online image: {e}")
-                # Reset image vars on error
+                print(f"Background: Error processing online image {selected_image_url}: {e}")
+                # Avoid messagebox in thread
                 image_filename = None
                 image_data_b64 = None
 
-        elif self.image_source == 'local' and self.selected_local_image_path:
+        elif image_source == 'local' and selected_local_path:
             try:
-                print(f"Reading local image: {self.selected_local_image_path}")
-                with open(self.selected_local_image_path, 'rb') as f:
+                print(f"Background: Reading local image: {selected_local_path}")
+                with open(selected_local_path, 'rb') as f:
                     image_data = f.read()
                 image_data_b64 = base64.b64encode(image_data).decode('utf-8')
-                ext = os.path.splitext(self.selected_local_image_path)[1] or '.jpg' # Get ext from path or default
+                ext = os.path.splitext(selected_local_path)[1] or '.jpg' # Get ext from path or default
                 image_filename = f"_image_{note_id}{ext}"
-                print(f"Prepared local image: {image_filename}")
+                print(f"Background: Prepared local image: {image_filename}")
             except Exception as e:
-                print(f"Error processing local image {self.selected_local_image_path}: {e}")
-                messagebox.showerror("Image Error", f"Failed to read/process selected local image: {e}")
+                print(f"Background: Error processing local image {selected_local_path}: {e}")
+                # Avoid messagebox in thread
                 image_filename = None
                 image_data_b64 = None
 
-        elif self.image_source == 'clipboard' and self.pasted_image_object:
+        elif image_source == 'clipboard' and pasted_image_obj:
             try:
-                print("Processing pasted image...")
-                # Save pasted image to a bytes buffer to get its data
+                print("Background: Processing pasted image...")
+                # Use the passed PIL Image object (pasted_image_obj)
                 buffer = io.BytesIO()
-                # Try saving as PNG first, fallback to JPEG if needed (e.g., RGBA)
-                save_format = 'PNG'
+                save_format = 'PNG' # Default to PNG
                 try:
-                    self.pasted_image_object.save(buffer, format=save_format)
+                    # Use the passed object directly
+                    pasted_image_obj.save(buffer, format=save_format)
                 except OSError: # Handle modes like RGBA that JPEG doesn't support directly
-                     print("Pasted image has alpha channel, converting to RGB for JPEG.")
-                     rgb_image = self.pasted_image_object.convert('RGB')
+                     print("Background: Pasted image has alpha channel, converting to RGB for JPEG.")
+                     rgb_image = pasted_image_obj.convert('RGB')
                      save_format = 'JPEG'
                      buffer = io.BytesIO() # Reset buffer
-                     rgb_image.save(buffer, format=save_format)
+                     rgb_image.save(buffer, format=save_format) # Save the converted image
 
                 image_data = buffer.getvalue()
                 image_data_b64 = base64.b64encode(image_data).decode('utf-8')
                 ext = '.png' if save_format == 'PNG' else '.jpg'
                 image_filename = f"_image_{note_id}{ext}"
-                print(f"Prepared pasted image: {image_filename}")
+                print(f"Background: Prepared pasted image: {image_filename}")
             except Exception as e:
-                print(f"Error processing pasted image: {e}")
-                messagebox.showerror("Image Error", f"Failed to process pasted image: {e}")
+                print(f"Background: Error processing pasted image: {e}")
+                # Avoid messagebox in thread
                 image_filename = None
                 image_data_b64 = None
 
         return audio_filename1, audio_filename2, image_filename, image_data_b64
 
-    def show_next_note(self):
-        note_id = self.notes[self.current_index]['noteId']
-        url = f"https://jisho.org/search/{self.current_word}"
-
-        # Prepare audio and image data
-        audio1, audio2, img_filename, img_data_b64 = self.send_to_anki()
-
-        # Update Anki note (needs modification in get_anki_data)
+    def _process_and_update_anki_background(self, note_id, word, sentence1_jp, sentence1_en, sentence2_jp, sentence2_en, image_source, selected_image_url, selected_local_path, pasted_image_obj):
+        """
+        Runs in background thread: Prepares data and updates Anki note.
+        """
         try:
+            print(f"Background: Starting processing for note {note_id}")
+            # 1. Prepare Audio and Image data
+            audio1, audio2, img_filename, img_data_b64 = self._prepare_anki_data(
+                note_id, sentence1_jp, sentence2_jp, image_source, selected_image_url, selected_local_path, pasted_image_obj
+            )
+
+            # 2. Prepare other fields (HTML, URL)
+            sentence1_jp_html = generate_furigana_html(sentence1_jp)
+            sentence2_jp_html = generate_furigana_html(sentence2_jp)
+            url = f"https://jisho.org/search/{word}" # Use the passed word
+
+            # 3. Update Anki Note
             get_anki_data.update_note_full(
                 note_id=note_id,
-                sentence1_jp_html=generate_furigana_html(self.sentence1_jp),
-                sentence1_en=self.sentence1_en,
-                sentence2_jp_html=generate_furigana_html(self.sentence2_jp),
-                sentence2_en=self.sentence2_en,
+                sentence1_jp_html=sentence1_jp_html,
+                sentence1_en=sentence1_en,
+                sentence2_jp_html=sentence2_jp_html,
+                sentence2_en=sentence2_en,
                 url=url,
                 audio1_filename=audio1,
                 audio2_filename=audio2,
                 image_filename=img_filename,
-                image_data_b64=img_data_b64, # Pass image data for storage
+                image_data_b64=img_data_b64,
             )
-            print(f"Successfully updated note {note_id}")
+            print(f"Background: Successfully updated note {note_id}.")
+
         except Exception as e:
-            messagebox.showerror("Anki Update Error", f"Failed to update note {note_id}: {e}")
-            # Decide if we should proceed to next note or not? For now, we do.
-            print(f"Anki update failed for note {note_id}: {e}")
+            # Log any error during preparation or update
+            print(f"Background: FAILED processing/updating note {note_id}: {e}")
+            # Optionally, implement a queue to show errors in the main thread's UI
+
+    def show_next_note(self):
+        if not self.notes:
+            messagebox.showinfo("Info", "No deck loaded.")
+            return
+
+        # --- Capture data from the CURRENT note for the background thread ---
+        # Make sure to capture before self attributes are updated by display_current_note
+        prev_note_index = self.current_index
+        prev_note_id = self.notes[prev_note_index]['noteId']
+        prev_word = self.current_word
+        prev_sentence1_jp = self.sentence1_jp
+        prev_sentence1_en = self.sentence1_en
+        prev_sentence2_jp = self.sentence2_jp
+        prev_sentence2_en = self.sentence2_en
+        # Capture image details needed for _prepare_anki_data
+        prev_image_source = self.image_source
+        prev_selected_image_url = self.selected_image_url
+        prev_selected_local_path = self.selected_local_image_path
+        # Handle pasted image object carefully - pass the object itself
+        # Make a copy if it exists, otherwise pass None
+        prev_pasted_image_obj = self.pasted_image_object.copy() if self.pasted_image_object else None
 
 
-        # Move to the next note
-        if self.notes and self.current_index < len(self.notes) - 1:
+        # --- Move to the NEXT note and display it IMMEDIATELY ---
+        if self.current_index < len(self.notes) - 1:
             self.current_index += 1
-            # Clear all image selections for the new note
-            self._clear_image_selection_area() # Use the helper
-            self.display_current_note()
+            self._clear_image_selection_area() # Clear images *before* displaying new note
+            self.display_current_note() # Load and display the NEW current note
+
+            # --- Start background processing & update for the PREVIOUS note ---
+            update_thread = threading.Thread(
+                target=self._process_and_update_anki_background,
+                args=( # Pass all captured previous note data
+                    prev_note_id,
+                    prev_word,
+                    prev_sentence1_jp, prev_sentence1_en,
+                    prev_sentence2_jp, prev_sentence2_en,
+                    prev_image_source,
+                    prev_selected_image_url,
+                    prev_selected_local_path,
+                    prev_pasted_image_obj
+                ),
+                daemon=True # Allows the main program to exit even if this thread is running
+            )
+            update_thread.start()
+
         else:
-            messagebox.showinfo("Info", "Reached the end of the deck.")
+            # --- Reached the end: Process and update the LAST note ---
+            print("Reached end of deck. Starting update for the last note...")
+            # Start background thread for the last note using the captured data
+            update_thread = threading.Thread(
+                target=self._process_and_update_anki_background,
+                 args=( # Pass all captured previous note data
+                    prev_note_id,
+                    prev_word,
+                    prev_sentence1_jp, prev_sentence1_en,
+                    prev_sentence2_jp, prev_sentence2_en,
+                    prev_image_source,
+                    prev_selected_image_url,
+                    prev_selected_local_path,
+                    prev_pasted_image_obj
+                ),
+                daemon=True
+            )
+            update_thread.start()
+            # Inform user immediately, don't wait for thread
+            messagebox.showinfo("Info", "Reached the end of the deck. Last note update started in background.")
+
 
     def skip_to_next_note(self):
+        # Skipping doesn't involve saving, so it's simpler
         if self.notes and self.current_index < len(self.notes) - 1:
             self.current_index += 1
             # Clear all image selections for the new note
@@ -644,6 +728,35 @@ class AnkiGUI(tk.Tk):
             self.display_current_note()
         else:
             messagebox.showinfo("Info", "This is the first note.")
+
+    def jump_to_note(self):
+        """Jumps to the specified note number."""
+        if not self.notes:
+            messagebox.showwarning("Warning", "No deck loaded.")
+            return
+
+        try:
+            target_num_str = self.jump_entry.get()
+            target_num = int(target_num_str)
+            total_notes = len(self.notes)
+
+            if 1 <= target_num <= total_notes:
+                self.current_index = target_num - 1 # Adjust to 0-based index
+                self._clear_image_selection_area() # Clear image selection
+                self.display_current_note()
+                self.jump_entry.delete(0, tk.END) # Clear the entry field after successful jump
+            else:
+                messagebox.showerror("Invalid Number", f"Please enter a number between 1 and {total_notes}.")
+                self.jump_entry.delete(0, tk.END) # Clear the entry field
+
+        except ValueError:
+            messagebox.showerror("Invalid Input", "Please enter a valid number.")
+            self.jump_entry.delete(0, tk.END) # Clear the entry field
+        except Exception as e:
+            messagebox.showerror("Error", f"An unexpected error occurred: {e}")
+            print(f"Error in jump_to_note: {e}")
+            self.jump_entry.delete(0, tk.END) # Clear the entry field
+
 
 if __name__ == "__main__":
     app = AnkiGUI()
