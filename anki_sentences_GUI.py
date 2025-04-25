@@ -1,6 +1,7 @@
 import re
+import re
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext, filedialog # Added filedialog
+from tkinter import ttk, messagebox, scrolledtext, filedialog
 import Libary.get_anki_data as get_anki_data
 import Libary.sentance_ai as sentence
 import Libary.generate_audio as TTS
@@ -11,14 +12,17 @@ from PIL import Image, ImageTk, ImageGrab # Added ImageGrab
 import io
 import base64
 import os
-import threading # Import threading
+import threading
 import time
+import json # Import json for config file
 
-# List the two available decks.
-DECKS = ["Wörter(aus Wörterbuch)", "Japanisch Wörter"]
+# Configuration
 ANKI_CONNECT_URL = "http://localhost:8765"
-COUNT_PER_SOURCE = 5 #Number Images per source
-MEANINGS_PER_SOURCE = 3 
+OLLAMA_API_URL = "http://localhost:11434" # Base URL for Ollama API checks
+CONFIG_FILE = "anki_gui_config.json"
+COUNT_PER_SOURCE = 5 # Number Images per source
+MEANINGS_PER_SOURCE = 3
+STATUS_CHECK_INTERVAL = 10000 # Milliseconds (10 seconds) for connection checks
 
 def generate_furigana_html(sentence_str: str) -> str:
     kks = pykakasi.kakasi()
@@ -52,16 +56,21 @@ class AnkiGUI(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Anki Sentence & TTS Generator")
-        # self.geometry("800x850") # Removed fixed geometry for auto-resizing
-        self.selected_deck = tk.StringVar(value=DECKS[0])
+        # Load configuration first
+        config = self.load_config()
+        default_deck = config.get("deck", "") # Get saved deck or empty string
+        default_model = config.get("ollama_model", "") # Get saved model or empty string
+
+        self.selected_deck = tk.StringVar(value=default_deck)
         self.notes = []
         self.current_index = 0
 
-        #Load Models
-        self.model_names = ["gemma3:latest", "gemma3:12b", "llama3.1:8b", "deepseek-r1:14b", "deepseek-r1:8b"]
-        self.selected_model = tk.StringVar(value=self.model_names[0])
-        self.manual_model = tk.StringVar(value="")  # For manual input
+        # Variables for dynamic lists
+        self.available_decks = []
+        self.available_models = []
 
+        # Model selection variable
+        self.selected_model = tk.StringVar(value=default_model)
 
         # Dictionary to store generated sentences for each note (by note id).
         # Format: { note_id: (jp1, en1, jp2, en2) }
@@ -95,31 +104,65 @@ class AnkiGUI(tk.Tk):
         # self.anki_update_lock = threading.Lock()
 
         self.create_widgets()
+        self.update_deck_list() # Populate decks initially
+        self.update_model_list() # Populate models initially
+
+        # Set initial selection after lists are populated
+        if default_deck and default_deck in self.available_decks:
+            self.selected_deck.set(default_deck)
+        elif self.available_decks:
+             self.selected_deck.set(self.available_decks[0]) # Fallback to first deck
+
+        if default_model and default_model in self.available_models:
+            self.selected_model.set(default_model)
+        elif self.available_models:
+            self.selected_model.set(self.available_models[0]) # Fallback to first model
+
+        # Start periodic connection checks
+        self.check_anki_connection()
+        self.check_ollama_connection()
+
 
     def create_widgets(self):
-        # Deck selection frame.
-        deck_frame = tk.Frame(self)
-        deck_frame.pack(pady=10)
-        tk.Label(deck_frame, text="Select Deck:").pack(side=tk.LEFT)
-        deck_menu = ttk.Combobox(deck_frame, textvariable=self.selected_deck, 
-                                 values=DECKS, state="readonly", width=30)
-        deck_menu.pack(side=tk.LEFT, padx=5)
+        # --- Top Bar Frame (Container for Rows) ---
+        top_bar_frame = tk.Frame(self)
+        top_bar_frame.pack(pady=5, padx=10, fill=tk.X)
+
+        # --- Row 1: Anki Status and Deck Selection ---
+        anki_row_frame = tk.Frame(top_bar_frame)
+        anki_row_frame.pack(fill=tk.X, pady=(0, 5)) # Add padding below this row
+
+        # Anki Status Indicator
+        self.anki_status_label = tk.Label(anki_row_frame, text="Anki: Checking...", fg="orange", width=18, anchor="w")
+        self.anki_status_label.pack(side=tk.LEFT, padx=(0, 10))
+
+        # Deck selection frame
+        deck_frame = tk.Frame(anki_row_frame)
+        deck_frame.pack(side=tk.LEFT, padx=5)
+        tk.Label(deck_frame, text="Deck:").pack(side=tk.LEFT)
+        self.deck_menu = ttk.Combobox(deck_frame, textvariable=self.selected_deck,
+                                      values=[], state="readonly", width=30) # Start empty
+        self.deck_menu.pack(side=tk.LEFT, padx=5)
+        tk.Button(deck_frame, text="🔄", command=self.update_deck_list).pack(side=tk.LEFT, padx=(0, 5)) # Refresh Deck List
         tk.Button(deck_frame, text="Load Deck", command=self.load_deck).pack(side=tk.LEFT)
 
-        #Model selection 
-        model_frame = tk.Frame(self)
-        model_frame.pack(pady=5)
-        tk.Label(model_frame, text="Select Model:").pack(side=tk.LEFT)
-        model_menu = ttk.Combobox(model_frame, textvariable=self.selected_model,
-                                values=self.model_names, state="readonly", width=30)
-        model_menu.pack(side=tk.LEFT, padx=5)
+        # --- Row 2: Ollama Status and Model Selection ---
+        ollama_row_frame = tk.Frame(top_bar_frame)
+        ollama_row_frame.pack(fill=tk.X)
 
-        # Manual model entry.
-        manual_frame = tk.Frame(self)
-        manual_frame.pack(pady=5)
-        tk.Label(manual_frame, text="Or enter Model:").pack(side=tk.LEFT)
-        model_entry = tk.Entry(manual_frame, textvariable=self.manual_model, width=30)
-        model_entry.pack(side=tk.LEFT, padx=5)
+        # Ollama Status Indicator
+        self.ollama_status_label = tk.Label(ollama_row_frame, text="Ollama: Checking...", fg="orange", width=18, anchor="w")
+        # Align Ollama status label with Anki status label using padding/empty label if needed, or just pack left
+        self.ollama_status_label.pack(side=tk.LEFT, padx=(0, 10)) # Same padding as Anki status
+
+        # Model selection frame
+        model_frame = tk.Frame(ollama_row_frame)
+        model_frame.pack(side=tk.LEFT, padx=5) # Same padding as deck frame
+        tk.Label(model_frame, text="Model:").pack(side=tk.LEFT)
+        self.model_menu = ttk.Combobox(model_frame, textvariable=self.selected_model,
+                                       values=[], state="readonly", width=30) # Start empty
+        self.model_menu.pack(side=tk.LEFT, padx=5)
+        tk.Button(model_frame, text="🔄", command=self.update_model_list).pack(side=tk.LEFT) # Refresh Model List
 
 
         # Main frame for note details and sentence generation.
@@ -166,18 +209,28 @@ class AnkiGUI(tk.Tk):
 
     def load_deck(self):
         deck_name = self.selected_deck.get()
+        if not deck_name:
+            messagebox.showwarning("Warning", "Please select a deck first.")
+            return
         try:
             deck_info = get_anki_data.get_deck_info(deck_name)
             self.notes = deck_info.get("allNotes", [])
             self.current_index = 0
             self.generated_sentences = {}  # Clear previously generated sentences.
             if not self.notes:
-                messagebox.showinfo("Info", "No notes found in the selected deck.")
+                messagebox.showinfo("Info", f"No notes found in the deck '{deck_name}'.")
+                self.update_progress() # Update progress even if empty
             else:
                 self.update_progress()
                 self.display_current_note()
+                # Save config after successfully loading a deck
+                self.save_config()
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to load deck: {e}")
+            messagebox.showerror("Error", f"Failed to load deck '{deck_name}':\n{e}")
+            self.notes = [] # Ensure notes list is empty on error
+            self.current_index = 0
+            self.update_progress() # Update progress to show 0/0
+            self.display_current_note() # Clear display area
 
     def update_progress(self):
         """Update progress bar and label."""
@@ -257,8 +310,13 @@ class AnkiGUI(tk.Tk):
         """
         Generate sentences for the current note and store them.
         """
+        selected_model = self.selected_model.get()
+        if not selected_model:
+             messagebox.showwarning("Warning", "Please select an Ollama model first.")
+             return # Don't proceed if no model selected
+
         try:
-            selected_model = self.manual_model.get().strip() or self.selected_model.get()
+            # Use only the selected model from the dropdown
             jp1, en1, jp2, en2 = sentence.ollama_sentances(self.current_word, self.current_meaning, selected_model)
 
         except Exception as e:
@@ -285,6 +343,11 @@ class AnkiGUI(tk.Tk):
         """
         Regenerate sentences for the current note that are not kept.
         """
+        selected_model = self.selected_model.get()
+        if not selected_model:
+             messagebox.showwarning("Warning", "Please select an Ollama model first.")
+             return # Don't proceed if no model selected
+
         note_id = self.notes[self.current_index]['noteId']
         # Capture the current state of the keep checkboxes BEFORE regeneration.
         keep1_state = self.keep_var1.get()
@@ -297,7 +360,7 @@ class AnkiGUI(tk.Tk):
         current_en2 = self.sentence2_en
 
         try:
-            selected_model = self.manual_model.get().strip() or self.selected_model.get()
+            # Use only the selected model from the dropdown
             new_jp1, new_en1, new_jp2, new_en2 = sentence.ollama_sentances(self.current_word, self.current_meaning, selected_model)
 
         except Exception as e:
@@ -686,6 +749,8 @@ class AnkiGUI(tk.Tk):
                 daemon=True # Allows the main program to exit even if this thread is running
             )
             update_thread.start()
+            # Save config when moving to the next note (implies acceptance of current settings)
+            self.save_config()
 
         else:
             # --- Reached the end: Process and update the LAST note ---
@@ -756,6 +821,134 @@ class AnkiGUI(tk.Tk):
             messagebox.showerror("Error", f"An unexpected error occurred: {e}")
             print(f"Error in jump_to_note: {e}")
             self.jump_entry.delete(0, tk.END) # Clear the entry field
+
+    # --- Configuration Methods ---
+    def load_config(self):
+        """Loads configuration from the JSON file."""
+        try:
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                print(f"Loaded config: {config}")
+                return config
+        except FileNotFoundError:
+            print("Config file not found, using defaults.")
+            return {}
+        except json.JSONDecodeError:
+            print("Error decoding config file, using defaults.")
+            return {}
+        except Exception as e:
+            print(f"Error loading config: {e}")
+            return {}
+
+    def save_config(self):
+        """Saves the current deck and model selection to the JSON file."""
+        config_data = {
+            "deck": self.selected_deck.get(),
+            "ollama_model": self.selected_model.get()
+        }
+        try:
+            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+                json.dump(config_data, f, indent=4)
+                print(f"Saved config: {config_data}")
+        except Exception as e:
+            print(f"Error saving config: {e}")
+            # Optionally show a warning to the user
+            # messagebox.showwarning("Config Error", f"Could not save configuration:\n{e}")
+
+    # --- Dynamic List Update Methods ---
+    def update_deck_list(self):
+        """Fetches deck names from Anki and updates the combobox."""
+        print("Updating deck list...")
+        try:
+            self.available_decks = get_anki_data.get_deck_names()
+            self.deck_menu['values'] = self.available_decks
+            if not self.available_decks:
+                self.selected_deck.set("") # Clear selection if no decks
+                messagebox.showinfo("Anki Decks", "No decks found or AnkiConnect not running.")
+            elif self.selected_deck.get() not in self.available_decks:
+                # If current selection is invalid, select the first available deck
+                self.selected_deck.set(self.available_decks[0])
+            print(f"Decks updated: {self.available_decks}")
+        except Exception as e:
+            messagebox.showerror("Anki Error", f"Could not fetch deck names:\n{e}")
+            self.available_decks = []
+            self.deck_menu['values'] = []
+            self.selected_deck.set("")
+
+    def update_model_list(self):
+        """Fetches Ollama model names and updates the combobox."""
+        print("Updating Ollama model list...")
+        try:
+            # Assuming get_ollama_models is added to sentence_ai or similar
+            # For now, let's placeholder this call. Need to implement get_ollama_models next.
+            # self.available_models = sentence.get_ollama_models() # Placeholder
+            # --- Temporary Placeholder ---
+            try:
+                response = requests.get(f"{OLLAMA_API_URL}/api/tags", timeout=5)
+                response.raise_for_status()
+                models_data = response.json()
+                self.available_models = sorted([m['name'] for m in models_data.get('models', [])])
+            except requests.exceptions.RequestException as e:
+                 print(f"Error fetching Ollama models: {e}")
+                 self.available_models = [] # Keep empty on error
+            # --- End Temporary Placeholder ---
+
+            self.model_menu['values'] = self.available_models
+            if not self.available_models:
+                self.selected_model.set("") # Clear selection if no models
+                messagebox.showinfo("Ollama Models", "No models found or Ollama server not running.")
+            elif self.selected_model.get() not in self.available_models:
+                 # If current selection is invalid, select the first available model
+                 if self.available_models: # Check if list is not empty after fetch attempt
+                     self.selected_model.set(self.available_models[0])
+                 else:
+                     self.selected_model.set("") # Clear if still no models
+            print(f"Models updated: {self.available_models}")
+            # Save config whenever the model list is updated and a valid model is selected
+            if self.selected_model.get():
+                self.save_config()
+        except Exception as e:
+            messagebox.showerror("Ollama Error", f"Could not fetch Ollama models:\n{e}")
+            self.available_models = []
+            self.model_menu['values'] = []
+            self.selected_model.set("")
+
+    # --- Connection Status Check Methods ---
+    def check_anki_connection(self):
+        """Periodically checks connection to AnkiConnect."""
+        try:
+            # Use a lightweight request like 'version'
+            get_anki_data.invoke('version')
+            self.anki_status_label.config(text="Anki: Connected", fg="green")
+        except Exception:
+            self.anki_status_label.config(text="Anki: Disconnected", fg="red")
+            # If disconnected, maybe clear deck list or disable load button?
+            # self.deck_menu['values'] = []
+            # self.selected_deck.set("")
+        finally:
+            # Schedule the next check
+            self.after(STATUS_CHECK_INTERVAL, self.check_anki_connection)
+
+    def check_ollama_connection(self):
+        """Periodically checks connection to Ollama API."""
+        try:
+            # Check if the base Ollama API endpoint is reachable
+            response = requests.get(OLLAMA_API_URL, timeout=2) # Short timeout
+            response.raise_for_status() # Check for HTTP errors
+            # Could add a more specific check like /api/tags if needed
+            self.ollama_status_label.config(text="Ollama: Online", fg="green")
+        except requests.exceptions.RequestException:
+            self.ollama_status_label.config(text="Ollama: Offline", fg="red")
+            # If disconnected, maybe clear model list or disable generation?
+            # self.model_menu['values'] = []
+            # self.selected_model.set("")
+        except Exception as e:
+             # Catch other potential errors
+             print(f"Unexpected error checking Ollama connection: {e}")
+             self.ollama_status_label.config(text="Ollama: Error", fg="red")
+        finally:
+            # Schedule the next check
+            self.after(STATUS_CHECK_INTERVAL, self.check_ollama_connection)
 
 
 if __name__ == "__main__":

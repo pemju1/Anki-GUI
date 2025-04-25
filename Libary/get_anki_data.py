@@ -26,6 +26,19 @@ def invoke(action, **params):
         raise Exception(f"AnkiConnect Error: {result['error']}")
     return result
 
+def get_deck_names():
+    """Fetches a list of all deck names from Anki."""
+    try:
+        result = invoke('deckNames')
+        # Ensure the result is a list, handle potential None or other types
+        deck_list = result.get('result', [])
+        return deck_list if isinstance(deck_list, list) else []
+    except Exception as e:
+        print(f"Error fetching deck names: {e}")
+        # Consider raising the exception or returning an empty list
+        # Returning empty list for now to avoid crashing the GUI if Anki isn't running
+        return []
+
 def store_media_file(filename: str, data_b64: str):
     """
     Stores a file (e.g., image or audio) in Anki's media collection.
