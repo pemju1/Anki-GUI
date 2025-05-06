@@ -39,6 +39,48 @@ def get_deck_names():
         # Returning empty list for now to avoid crashing the GUI if Anki isn't running
         return []
 
+def get_subdeck_names(parent_deck_name: str) -> list:
+    """Fetches a list of immediate subdeck names for a given parent deck."""
+    try:
+        all_decks = get_deck_names() # Uses the existing function
+        subdecks = []
+        parent_prefix = f"{parent_deck_name}::"
+        parent_depth = parent_deck_name.count("::")
+        for deck_name in all_decks:
+            if deck_name.startswith(parent_prefix):
+                if deck_name.count("::") == parent_depth + 1:
+                    subdecks.append(deck_name)
+        return subdecks
+    except Exception as e:
+        print(f"Error fetching subdeck names for '{parent_deck_name}': {e}")
+        return []
+
+def get_card_ids_for_note(note_id: int) -> list:
+    """Fetches all card IDs associated with a given note ID."""
+    try:
+        result = invoke('findCards', query=f'nid:{note_id}')
+        card_ids = result.get('result', [])
+        return card_ids if isinstance(card_ids, list) else []
+    except Exception as e:
+        print(f"Error fetching card IDs for note {note_id}: {e}")
+        return []
+
+def move_note_to_deck(note_id: int, target_deck_name: str) -> dict:
+    """Moves all cards of a given note to a specified target deck."""
+    try:
+        card_ids = get_card_ids_for_note(note_id)
+        if not card_ids:
+            raise Exception(f"No cards found for note ID {note_id}. Cannot move.")
+        
+        print(f"Moving cards {card_ids} of note {note_id} to deck '{target_deck_name}'...")
+        result = invoke('changeDeck', cards=card_ids, deck=target_deck_name)
+        print(f"Result of moving note {note_id}: {result}")
+        return result
+    except Exception as e:
+        print(f"Error moving note {note_id} to deck '{target_deck_name}': {e}")
+        # It's important to raise or return an error structure if the GUI needs to know
+        raise # Re-raising for now, can be handled more gracefully if needed
+
 def store_media_file(filename: str, data_b64: str):
     """
     Stores a file (e.g., image or audio) in Anki's media collection.

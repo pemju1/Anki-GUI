@@ -21,6 +21,25 @@ def get_deck_notes(deck_name):
     deck_info = get_anki_data.get_deck_info(deck_name)
     return deck_info.get("allNotes", [])
 
+def get_subdecks(parent_deck_name: str) -> list:
+    """Fetches immediate subdecks for a given parent deck."""
+    try:
+        return get_anki_data.get_subdeck_names(parent_deck_name)
+    except Exception as e:
+        print(f"Error in anki_handler getting subdecks for '{parent_deck_name}': {e}")
+        return [] # Return empty list on error to prevent GUI crash
+
+def move_note_to_deck(note_id: int, target_deck_name: str):
+    """Moves a note to the specified target deck."""
+    try:
+        get_anki_data.move_note_to_deck(note_id, target_deck_name)
+        print(f"Successfully initiated move of note {note_id} to deck '{target_deck_name}'.")
+        # Optionally, return a status or True/False if the GUI needs to confirm
+    except Exception as e:
+        print(f"Error in anki_handler moving note {note_id} to '{target_deck_name}': {e}")
+        # Re-raise the exception so the GUI can catch it and display a message
+        raise
+
 # --- Background Processing for Anki Update ---
 
 def _prepare_anki_data(note_id, sentence1_jp, sentence2_jp, image_source, selected_image_url, selected_local_path, pasted_image_obj):
@@ -114,7 +133,7 @@ def _prepare_anki_data(note_id, sentence1_jp, sentence2_jp, image_source, select
 
     return audio_filename1, audio_filename2, image_filename, image_data_b64
 
-def update_anki_note_background(note_id, word, sentence1_jp, sentence1_en, sentence2_jp, sentence2_en, image_source, selected_image_url, selected_local_path, pasted_image_obj):
+def update_anki_note_background(note_id, word, sentence1_jp, sentence1_en, sentence2_jp, sentence2_en, image_source, selected_image_url, selected_local_path, pasted_image_obj, target_deck_name):
     """
     Runs in background thread: Prepares data and updates Anki note.
     """
@@ -144,14 +163,15 @@ def update_anki_note_background(note_id, word, sentence1_jp, sentence1_en, sente
             image_data_b64=img_data_b64,
         )
         print(f"Background: Successfully updated note {note_id}.")
-        # Optionally return success status if needed by the caller thread
+        
+        move_note_to_deck(note_id, target_deck_name)
 
     except Exception as e:
         # Log any error during preparation or update
         print(f"Background: FAILED processing/updating note {note_id}: {e}")
         # Optionally return failure status
 
-def start_anki_update_thread(note_id, word, sentence1_jp, sentence1_en, sentence2_jp, sentence2_en, image_source, selected_image_url, selected_local_path, pasted_image_obj):
+def start_anki_update_thread(note_id, word, sentence1_jp, sentence1_en, sentence2_jp, sentence2_en, image_source, selected_image_url, selected_local_path, pasted_image_obj, target_deck_name):
     """Starts the background thread for updating Anki."""
     update_thread = threading.Thread(
         target=update_anki_note_background,
@@ -160,7 +180,8 @@ def start_anki_update_thread(note_id, word, sentence1_jp, sentence1_en, sentence
             sentence1_jp, sentence1_en,
             sentence2_jp, sentence2_en,
             image_source, selected_image_url,
-            selected_local_path, pasted_image_obj
+            selected_local_path, pasted_image_obj,
+            target_deck_name
         ),
         daemon=True # Allows the main program to exit even if this thread is running
     )

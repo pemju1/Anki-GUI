@@ -22,12 +22,14 @@ class AnkiGUI(tk.Tk):
         default_model = config.get("ollama_model", "") # Get saved model or empty string
 
         self.selected_deck = tk.StringVar(value=default_deck)
+        self.selected_target_deck_to_move = tk.StringVar() # For the new move-to-deck combobox
         self.notes = []
         self.current_index = 0
 
         # Variables for dynamic lists
         self.available_decks = []
         self.available_models = []
+        self.target_deck_options = [] # For the move-to-deck combobox
 
         # Model selection variable
         self.selected_model = tk.StringVar(value=default_model)
@@ -65,13 +67,19 @@ class AnkiGUI(tk.Tk):
 
         self.create_widgets()
         self.update_deck_list() # Populate decks initially
+        self.update_target_deck_list() # Populate target decks for moving
         self.update_model_list() # Populate models initially
 
         # Set initial selection after lists are populated
-        if default_deck and default_deck in self.available_decks:
+        if default_deck and default_deck in self.available_decks: # self.available_decks is populated by update_deck_list
             self.selected_deck.set(default_deck)
         elif self.available_decks:
              self.selected_deck.set(self.available_decks[0]) # Fallback to first deck
+        
+        # Set initial selection for target deck to move (optional, can be empty)
+        if self.target_deck_options:
+            # self.selected_target_deck_to_move.set(self.target_deck_options[0]) # Or leave empty
+            pass
 
         if default_model and default_model in self.available_models:
             self.selected_model.set(default_model)
@@ -90,23 +98,39 @@ class AnkiGUI(tk.Tk):
 
         # --- Row 1: Anki Status and Deck Selection ---
         anki_row_frame = tk.Frame(top_bar_frame)
-        anki_row_frame.pack(fill=tk.X, pady=(0, 5)) # Add padding below this row
+        anki_row_frame.pack(fill=tk.X, pady=(0, 2)) # Reduced padding below this row
 
         # Anki Status Indicator
         self.anki_status_label = tk.Label(anki_row_frame, text="Anki: Checking...", fg="orange", width=18, anchor="w")
         self.anki_status_label.pack(side=tk.LEFT, padx=(0, 10))
 
-        # Deck selection frame
-        deck_frame = tk.Frame(anki_row_frame)
-        deck_frame.pack(side=tk.LEFT, padx=5)
-        tk.Label(deck_frame, text="Deck:").pack(side=tk.LEFT)
-        self.deck_menu = ttk.Combobox(deck_frame, textvariable=self.selected_deck,
-                                      values=[], state="readonly", width=30) # Start empty
+        # Deck selection frame (for loading notes)
+        deck_load_frame = tk.Frame(anki_row_frame)
+        deck_load_frame.pack(side=tk.LEFT, padx=5)
+        tk.Label(deck_load_frame, text="Deck:").pack(side=tk.LEFT)
+        self.deck_menu = ttk.Combobox(deck_load_frame, textvariable=self.selected_deck,
+                                      values=self.available_decks, state="readonly", width=30)
         self.deck_menu.pack(side=tk.LEFT, padx=5)
-        tk.Button(deck_frame, text="🔄", command=self.update_deck_list).pack(side=tk.LEFT, padx=(0, 5)) # Refresh Deck List
-        tk.Button(deck_frame, text="Load Deck", command=self.load_deck).pack(side=tk.LEFT)
+        tk.Button(deck_load_frame, text="🔄", command=self.update_deck_list).pack(side=tk.LEFT, padx=(0, 5))
+        tk.Button(deck_load_frame, text="Load Deck", command=self.load_deck).pack(side=tk.LEFT)
 
-        # --- Row 2: Ollama Status and Model Selection ---
+        # --- Row 2: Move Card to Deck ---
+        move_deck_row_frame = tk.Frame(top_bar_frame)
+        move_deck_row_frame.pack(fill=tk.X, pady=(0, 5))
+
+        # Empty label for alignment with Anki status (optional, adjust width as needed)
+        tk.Label(move_deck_row_frame, text="", width=18, anchor="w").pack(side=tk.LEFT, padx=(0,10))
+
+
+        move_deck_frame = tk.Frame(move_deck_row_frame)
+        move_deck_frame.pack(side=tk.LEFT, padx=5)
+        tk.Label(move_deck_frame, text="Move to:").pack(side=tk.LEFT)
+        self.move_to_deck_menu = ttk.Combobox(move_deck_frame, textvariable=self.selected_target_deck_to_move,
+                                              values=self.target_deck_options, state="readonly", width=30)
+        self.move_to_deck_menu.pack(side=tk.LEFT, padx=5)
+        tk.Button(move_deck_frame, text="🔄", command=self.update_target_deck_list).pack(side=tk.LEFT, padx=(0,5))
+
+        # --- Row 3: Ollama Status and Model Selection --- (was Row 2)
         ollama_row_frame = tk.Frame(top_bar_frame)
         ollama_row_frame.pack(fill=tk.X)
 
@@ -504,12 +528,72 @@ class AnkiGUI(tk.Tk):
     # Removed _prepare_anki_data and _process_and_update_anki_background
     # These are now handled by anki_handler.py
 
+    def _get_target_deck_options_list(self) -> list:
+        """Generates the sorted list of deck names for the 'Move to' combobox."""
+        all_decks = anki_handler.get_deck_names()
+        if not all_decks:
+            return []
+
+        target_decks_for_dialog = []
+        japan_deck_name = "Japanisch Wörter"
+        processed_decks = set() # To avoid duplicates and handle ordering
+
+        # Add Japanisch Wörter subdecks first if they exist
+        if japan_deck_name in all_decks:
+            subdecks = anki_handler.get_subdecks(japan_deck_name)
+            if subdecks:
+                target_decks_for_dialog.append(f"-- {japan_deck_name} Subdecks --")
+                processed_decks.add(f"-- {japan_deck_name} Subdecks --") # Mark separator as processed
+                for sd in sorted(subdecks):
+                    target_decks_for_dialog.append(sd)
+                    processed_decks.add(sd)
+                target_decks_for_dialog.append("--------------------")
+                processed_decks.add("--------------------") # Mark separator
+
+        # Add all other decks, ensuring no duplicates and proper sorting
+        other_decks_to_add = []
+        for deck in sorted(all_decks): # Iterate through all decks sorted alphabetically
+            if deck not in processed_decks:
+                other_decks_to_add.append(deck)
+                processed_decks.add(deck)
+        
+        target_decks_for_dialog.extend(other_decks_to_add)
+        
+        # Remove any leading/trailing separators if no actual decks were added around them
+        if target_decks_for_dialog and target_decks_for_dialog[0].startswith("--") and \
+           (len(target_decks_for_dialog) == 1 or target_decks_for_dialog[1].startswith("--")):
+            target_decks_for_dialog.pop(0)
+        if target_decks_for_dialog and target_decks_for_dialog[-1].startswith("--") and \
+           (len(target_decks_for_dialog) == 1 or target_decks_for_dialog[-2].startswith("--")):
+            target_decks_for_dialog.pop(-1)
+
+        return target_decks_for_dialog
+
+    def update_target_deck_list(self):
+        """Fetches and updates the list of target decks for moving cards."""
+        print("Updating target deck list for moving...")
+        self.target_deck_options = self._get_target_deck_options_list()
+        self.move_to_deck_menu['values'] = self.target_deck_options
+        if self.target_deck_options:
+            # self.selected_target_deck_to_move.set(self.target_deck_options[0]) # Optionally set a default
+            self.selected_target_deck_to_move.set("") # Or leave it blank
+        else:
+            self.selected_target_deck_to_move.set("")
+            # messagebox.showinfo("Target Decks", "No target decks found for moving.") # Maybe too intrusive
+        print(f"Target decks for moving updated: {self.target_deck_options}")
+
+
     def show_next_note(self):
         if not self.notes:
             messagebox.showinfo("Info", "No deck loaded.")
             return
+        
+        target_deck = self.selected_target_deck_to_move.get()
+        if not target_deck or target_deck.startswith("--"):
+            messagebox.showwarning("Warning", "Please select a valid target deck to move the card to.")
+            return
 
-        # --- Capture data from the CURRENT note for the background thread ---
+        # Capture data from the CURRENT note for the background thread
         prev_note_id = self.notes[self.current_index]['noteId']
         prev_word = self.current_word
         prev_sentence1_jp = self.sentence1_jp
@@ -521,14 +605,13 @@ class AnkiGUI(tk.Tk):
         prev_selected_local_path = self.selected_local_image_path
         prev_pasted_image_obj = self.pasted_image_object.copy() if self.pasted_image_object else None
 
-
-        # --- Move to the NEXT note and display it IMMEDIATELY ---
+        # Move to the NEXT note and display it IMMEDIATELY
         if self.current_index < len(self.notes) - 1:
             self.current_index += 1
             self._clear_image_selection_area()
             self.display_current_note()
 
-            # --- Start background processing & update for the PREVIOUS note ---
+            # Start background processing & update for the PREVIOUS note
             anki_handler.start_anki_update_thread(
                 prev_note_id,
                 prev_word,
@@ -537,7 +620,8 @@ class AnkiGUI(tk.Tk):
                 prev_image_source,
                 prev_selected_image_url,
                 prev_selected_local_path,
-                prev_pasted_image_obj
+                prev_pasted_image_obj,
+                target_deck
             )
             # Save config when moving to the next note
             config_handler.save_config({
@@ -545,7 +629,7 @@ class AnkiGUI(tk.Tk):
                 "ollama_model": self.selected_model.get()
             })
         else:
-            # --- Reached the end: Process and update the LAST note ---
+            # Reached the end: Process and update the LAST note
             print("Reached end of deck. Starting update for the last note...")
             anki_handler.start_anki_update_thread(
                 prev_note_id,
@@ -558,7 +642,8 @@ class AnkiGUI(tk.Tk):
                 prev_pasted_image_obj
             )
             messagebox.showinfo("Info", "Reached the end of the deck. Last note update started in background.")
-
+            # Optionally, clear the display or disable "Next" further if desired
+            # For now, it just shows the message and the last card remains displayed.
 
     def skip_to_next_note(self):
         # Skipping doesn't involve saving, so it's simpler
@@ -610,25 +695,31 @@ class AnkiGUI(tk.Tk):
     # --- Configuration Methods ---
     # load_config and save_config are now in config_handler.py
 
-    # --- Dynamic List Update Methods ---
+        # --- Dynamic List Update Methods ---
     def update_deck_list(self):
-        """Fetches deck names from Anki and updates the combobox."""
-        print("Updating deck list...")
+        """Fetches deck names from Anki and updates the main deck combobox."""
+        print("Updating main deck list...")
         try:
-            self.available_decks = anki_handler.get_deck_names()
+            self.available_decks = anki_handler.get_deck_names() # This is already a class attribute
             self.deck_menu['values'] = self.available_decks
             if not self.available_decks:
-                self.selected_deck.set("") # Clear selection if no decks
+                self.selected_deck.set("")
                 messagebox.showinfo("Anki Decks", "No decks found or AnkiConnect not running.")
             elif self.selected_deck.get() not in self.available_decks:
-                # If current selection is invalid, select the first available deck
-                self.selected_deck.set(self.available_decks[0])
-            print(f"Decks updated: {self.available_decks}")
+                if self.available_decks: # Check again if it's populated
+                    self.selected_deck.set(self.available_decks[0])
+                else:
+                    self.selected_deck.set("") # Should be redundant if above handles it
+            print(f"Main decks updated: {self.available_decks}")
+            # Also refresh the target deck list as it depends on all_decks
+            self.update_target_deck_list()
         except Exception as e:
             messagebox.showerror("Anki Error", f"Could not fetch deck names:\n{e}")
             self.available_decks = []
             self.deck_menu['values'] = []
             self.selected_deck.set("")
+            self.update_target_deck_list() # Still try to update target list (will be empty)
+
 
     def update_model_list(self):
         """Fetches Ollama model names and updates the combobox."""
