@@ -29,6 +29,33 @@ def get_subdecks(parent_deck_name: str) -> list:
         print(f"Error in anki_handler getting subdecks for '{parent_deck_name}': {e}")
         return [] # Return empty list on error to prevent GUI crash
 
+def get_formatted_japanisch_woerter_subdecks() -> list:
+    """
+    Fetches subdecks of "Japanisch Wörter" and formats them by removing the parent prefix.
+    Returns a list of formatted subdeck names.
+    """
+    parent_deck_name = "Japanisch Wörter"
+    try:
+        subdecks = get_anki_data.get_subdeck_names(parent_deck_name)
+        formatted_subdecks = []
+        prefix_to_remove = f"{parent_deck_name}::"
+        for deck in subdecks:
+            if deck.startswith(prefix_to_remove):
+                formatted_subdecks.append(deck[len(prefix_to_remove):])
+            else:
+                # If a subdeck doesn't have the prefix (shouldn't happen for direct subdecks)
+                # or if it's a sub-subdeck that AnkiConnect might return differently,
+                # we might want to log or handle this. For now, just add it if it's under.
+                # However, get_subdeck_names usually returns only immediate children.
+                formatted_subdecks.append(deck) # Or decide to skip if not directly under with prefix
+        
+        print(f"Formatted subdecks for '{parent_deck_name}': {formatted_subdecks}")
+        return formatted_subdecks
+    except Exception as e:
+        print(f"Error in anki_handler getting formatted subdecks for '{parent_deck_name}': {e}")
+        return []
+
+
 def move_note_to_deck(note_id: int, target_deck_name: str):
     """Moves a note to the specified target deck."""
     try:

@@ -292,6 +292,68 @@ class AnkiGUI(tk.Tk):
         # Update progress display.
         self.update_progress()
 
+        # Attempt to pre-select the target deck AFTER all content is displayed
+        # and self.current_word and processed_meaning are definitely set.
+        # This also runs after a potential recursive call from generate_sentences.
+        if note_id in self.generated_sentences: # Ensure sentences are loaded/generated
+            self._attempt_deck_preselection(processed_meaning)
+
+
+    def _attempt_deck_preselection(self, dictionary_meaning_for_prompt: str):
+        """
+        Attempts to get a deck recommendation from Ollama and pre-select it
+        in the 'Move to:' dropdown for 'Japanisch Wörter' subdecks.
+        """
+        if not self.current_word or not dictionary_meaning_for_prompt:
+            print("Deck Pre-selection: Word or meaning not available.")
+            return
+
+        selected_model = self.selected_model.get()
+        if not selected_model:
+            print("Deck Pre-selection: Ollama model not selected.")
+            return
+
+        # Ensure target deck options are loaded, though they should be by now.
+        if not self.target_deck_options:
+            print("Deck Pre-selection: Target deck options not loaded.")
+            # self.update_target_deck_list() # Optionally force refresh, but might be too aggressive
+            return
+
+        try:
+            # 1. Get the list of subdecks for the prompt (formatted without parent prefix)
+            japanisch_subdecks_for_prompt = anki_handler.get_formatted_japanisch_woerter_subdecks()
+            if not japanisch_subdecks_for_prompt:
+                print("Deck Pre-selection: No 'Japanisch Wörter' subdecks found for recommendation prompt.")
+                return
+
+            # 2. Get recommendation from Ollama
+            print(f"Deck Pre-selection: Attempting for word '{self.current_word}' Meaning: {dictionary_meaning_for_prompt}")
+            recommended_short_deck_name = ollama_handler.get_recommended_deck(
+                vocabulary=self.current_word,
+                dictionary_meaning=dictionary_meaning_for_prompt,
+                deck_list=japanisch_subdecks_for_prompt,
+                model_name=selected_model
+            )
+
+            if recommended_short_deck_name:
+                # 3. Construct the full deck name as it appears in the combobox
+                full_recommended_deck_name = f"Japanisch Wörter::{recommended_short_deck_name}"
+
+                # 4. Check if this deck is in the current target deck options and set it
+                if full_recommended_deck_name in self.target_deck_options:
+                    self.selected_target_deck_to_move.set(full_recommended_deck_name)
+                    print(f"Deck Pre-selection: Successfully pre-selected '{full_recommended_deck_name}'")
+                else:
+                    print(f"Deck Pre-selection: Recommended deck '{full_recommended_deck_name}' not in target options: {self.target_deck_options}")
+            else:
+                print("Deck Pre-selection: No recommendation received from Ollama.")
+
+        except Exception as e:
+            print(f"Deck Pre-selection: Error during process: {e}")
+            # Optionally, show a non-intrusive error to the user if desired
+            # self.statusbar.config(text=f"Deck pre-selection error: {e}")
+
+
     def generate_sentences(self):
         """
         Generate sentences for the current note and store them.
