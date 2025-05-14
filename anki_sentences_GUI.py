@@ -298,7 +298,6 @@ class AnkiGUI(tk.Tk):
         if note_id in self.generated_sentences: # Ensure sentences are loaded/generated
             self._attempt_deck_preselection(processed_meaning)
 
-
     def _attempt_deck_preselection(self, dictionary_meaning_for_prompt: str):
         """
         Attempts to get a deck recommendation from Ollama and pre-select it
@@ -352,7 +351,6 @@ class AnkiGUI(tk.Tk):
             print(f"Deck Pre-selection: Error during process: {e}")
             # Optionally, show a non-intrusive error to the user if desired
             # self.statusbar.config(text=f"Deck pre-selection error: {e}")
-
 
     def generate_sentences(self):
         """
@@ -472,7 +470,6 @@ class AnkiGUI(tk.Tk):
             print(f"Error displaying single image preview (photo creation failed).")
             tk.Label(self.image_display_inner_frame, text="Error displaying image.").pack()
 
-
     def browse_for_image(self):
         """Opens file dialog to select a local image."""
         filepath = image_handler.browse_local_image()
@@ -482,8 +479,6 @@ class AnkiGUI(tk.Tk):
         try:
             # Image.open needs to be here to get the PIL Image object for preview
             img = Image.open(filepath)
-            # img.verify() # Verification is done in image_handler
-            # img = Image.open(filepath) # Re-open after verify
             img.load() # Load image data
 
             self._display_single_image_preview(img, filepath)
@@ -496,7 +491,6 @@ class AnkiGUI(tk.Tk):
         except Exception as e:
              messagebox.showerror("Image Error", f"An unexpected error occurred opening the image for preview:\n{e}")
 
-
     def paste_image_from_clipboard(self):
         """Pastes an image from the clipboard."""
         img = image_handler.get_image_from_clipboard() # Returns PIL Image or None
@@ -507,7 +501,6 @@ class AnkiGUI(tk.Tk):
             # print("Pasted image from clipboard.") # Printed by handler
         else:
             messagebox.showinfo("Clipboard", "No image found on the clipboard or error accessing.")
-
 
     def display_images(self):
         """Fetches online images or displays existing local/pasted selection."""
@@ -557,14 +550,8 @@ class AnkiGUI(tk.Tk):
             # Use default arguments in lambda to capture current values
             img_label.bind("<Button-1>", lambda event, label=img_label, url=full_url: self.select_image(label, url))
 
-            # except requests.exceptions.RequestException as e: # Handled by download_image_data
-            #     print(f"Error downloading online thumbnail {thumb_url}: {e}")
-            # except Exception as e: # Handled by create_thumbnail or PIL/ImageTk
-            #     print(f"Error processing online thumbnail {thumb_url}: {e}")
-
         # Update layout after adding all images
         self.update_idletasks()
-
 
     def select_image(self, clicked_label, source_info):
         """Handles selecting an online image thumbnail."""
@@ -586,9 +573,6 @@ class AnkiGUI(tk.Tk):
         self.selected_image_label.config(relief=tk.SUNKEN, bg="lightblue") # Highlight
 
         print(f"Selected online image: {self.selected_image_url}")
-
-    # Removed _prepare_anki_data and _process_and_update_anki_background
-    # These are now handled by anki_handler.py
 
     def _get_target_deck_options_list(self) -> list:
         """Generates the sorted list of deck names for the 'Move to' combobox."""
@@ -643,7 +627,6 @@ class AnkiGUI(tk.Tk):
             self.selected_target_deck_to_move.set("")
             # messagebox.showinfo("Target Decks", "No target decks found for moving.") # Maybe too intrusive
         print(f"Target decks for moving updated: {self.target_deck_options}")
-
 
     def show_next_note(self):
         if not self.notes:
@@ -701,7 +684,8 @@ class AnkiGUI(tk.Tk):
                 prev_image_source,
                 prev_selected_image_url,
                 prev_selected_local_path,
-                prev_pasted_image_obj
+                prev_pasted_image_obj,
+                target_deck
             )
             messagebox.showinfo("Info", "Reached the end of the deck. Last note update started in background.")
             # Optionally, clear the display or disable "Next" further if desired
@@ -754,10 +738,7 @@ class AnkiGUI(tk.Tk):
             print(f"Error in jump_to_note: {e}")
             self.jump_entry.delete(0, tk.END) # Clear the entry field
 
-    # --- Configuration Methods ---
-    # load_config and save_config are now in config_handler.py
-
-        # --- Dynamic List Update Methods ---
+# --- Dynamic List Update Methods ---
     def update_deck_list(self):
         """Fetches deck names from Anki and updates the main deck combobox."""
         print("Updating main deck list...")
@@ -781,7 +762,6 @@ class AnkiGUI(tk.Tk):
             self.deck_menu['values'] = []
             self.selected_deck.set("")
             self.update_target_deck_list() # Still try to update target list (will be empty)
-
 
     def update_model_list(self):
         """Fetches Ollama model names and updates the combobox."""
