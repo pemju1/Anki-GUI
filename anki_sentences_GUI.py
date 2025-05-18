@@ -90,7 +90,6 @@ class AnkiGUI(tk.Tk):
         self.check_anki_connection()
         self.check_ollama_connection()
 
-
     def create_widgets(self):
         # --- Top Bar Frame (Container for Rows) ---
         top_bar_frame = tk.Frame(self)
@@ -114,21 +113,6 @@ class AnkiGUI(tk.Tk):
         tk.Button(deck_load_frame, text="🔄", command=self.update_deck_list).pack(side=tk.LEFT, padx=(0, 5))
         tk.Button(deck_load_frame, text="Load Deck", command=self.load_deck).pack(side=tk.LEFT)
 
-        # --- Row 2: Move Card to Deck ---
-        move_deck_row_frame = tk.Frame(top_bar_frame)
-        move_deck_row_frame.pack(fill=tk.X, pady=(0, 5))
-
-        # Empty label for alignment with Anki status (optional, adjust width as needed)
-        tk.Label(move_deck_row_frame, text="", width=18, anchor="w").pack(side=tk.LEFT, padx=(0,10))
-
-
-        move_deck_frame = tk.Frame(move_deck_row_frame)
-        move_deck_frame.pack(side=tk.LEFT, padx=5)
-        tk.Label(move_deck_frame, text="Move to:").pack(side=tk.LEFT)
-        self.move_to_deck_menu = ttk.Combobox(move_deck_frame, textvariable=self.selected_target_deck_to_move,
-                                              values=self.target_deck_options, state="readonly", width=30)
-        self.move_to_deck_menu.pack(side=tk.LEFT, padx=5)
-        tk.Button(move_deck_frame, text="🔄", command=self.update_target_deck_list).pack(side=tk.LEFT, padx=(0,5))
 
         # --- Row 3: Ollama Status and Model Selection --- (was Row 2)
         ollama_row_frame = tk.Frame(top_bar_frame)
@@ -168,6 +152,22 @@ class AnkiGUI(tk.Tk):
         tk.Button(image_button_frame, text="Images from Web", command=self.display_images).pack(side=tk.LEFT, padx=10)
         tk.Button(image_button_frame, text="Browse Local File...", command=self.browse_for_image).pack(side=tk.LEFT, padx=10)
         tk.Button(image_button_frame, text="Paste from Clipboard", command=self.paste_image_from_clipboard).pack(side=tk.LEFT, padx=10)
+
+        # --- Row 2: Move Card to Deck ---
+        move_deck_row_frame = tk.Frame(self)
+        move_deck_row_frame.pack(fill=tk.X, pady=(0, 5))
+
+        # Empty label for alignment with Anki status (optional, adjust width as needed)
+        tk.Label(move_deck_row_frame, text="", width=18, anchor="w").pack(side=tk.LEFT, padx=(0,10))
+
+
+        move_deck_frame = tk.Frame(move_deck_row_frame)
+        move_deck_frame.pack(side=tk.LEFT, padx=5)
+        tk.Label(move_deck_frame, text="Move to:").pack(side=tk.LEFT)
+        self.move_to_deck_menu = ttk.Combobox(move_deck_frame, textvariable=self.selected_target_deck_to_move,
+                                              values=self.target_deck_options, state="readonly", width=30)
+        self.move_to_deck_menu.pack(side=tk.LEFT, padx=5)
+        tk.Button(move_deck_frame, text="🔄", command=self.update_target_deck_list).pack(side=tk.LEFT, padx=(0,5))
 
         # Navigation frame.
         nav_frame = tk.Frame(self)
