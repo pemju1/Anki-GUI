@@ -245,13 +245,24 @@ class AnkiGUI(tk.Tk):
         except KeyError:
             tk.Label(self.note_display_frame, text="Meaning field not found for this note.").pack()
             return
+        try:
+            note_field = note['fields']["Note"]["value"]
+        except KeyError:
+            tk.Label(self.note_display_frame, text="Note field not found for this note.").pack()
+            pass
+        try:
+            reading = note['fields']["Reading"]["value"]
+        except KeyError:
+            tk.Label(self.note_display_frame, text="Reading field not found for this note.").pack()
+            pass
 
         self.current_word = word
         self.current_meaning = meaning
 
         # Display the word and meaning.
-        tk.Label(self.note_display_frame, text=f"Word: {word}", font=("Helvetica", 14, "bold")).pack(anchor="w")
+        tk.Label(self.note_display_frame, text=f"Word: {word} [{reading}]", font=("Helvetica", 14, "bold")).pack(anchor="w")
         tk.Label(self.note_display_frame, text=f"Meaning: {processed_meaning}", font=("Helvetica", 12)).pack(anchor="w", pady=(0,10))
+        tk.Label(self.note_display_frame, text=f"Note: {note_field}", font=("Helvetica", 12)).pack(anchor="w", pady=(0,10))
 
         # Auto-generate sentences if not already generated.
         if note_id not in self.generated_sentences:

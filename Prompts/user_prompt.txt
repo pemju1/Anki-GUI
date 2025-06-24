@@ -2,7 +2,7 @@ Japanese Vocabulary: {vocabulary}
 Dictionary: 
 {dictionary}
 
-Now, provide **two easy example sentences**, using **the most common meanings** of {vocabulary}. Each example must be paired with its English translation.  
+Now, provide **two easy example sentences** in formal japanese, using **the most common meanings** of {vocabulary}. Each example must be paired with its English translation.  
 
 Strictly follow this format:  
 <answer> Japanese sentence with kanji </answer>  

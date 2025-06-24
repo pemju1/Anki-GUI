@@ -1,5 +1,5 @@
-For the vocabulary {vocabulary}, with the meanings "{dictionary}" you have to select the most fitting vocabulary deck from this list {deck_list}.
-Be as specific as possible and if  possible do not use broad category like Substantive, Adjektive, Verben.
-Your answer must strictly follow this format:
+Für die Vokabelkarte {vocabulary}, mit der Bedeutung "{dictionary}" sollst du das am besten passende Vokabeldeck aus der folgenden liste auswählen: {deck_list}.
+Sei so spezifisch wie möglich und vermeide wenn möglich allgemeine Stapel wie Substantive, Adjektive, Verben.
+Deine antwort muss strikt folgendem Format folgen:
 
 <deck> Name of the Deck </deck>  
