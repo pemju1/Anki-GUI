@@ -282,7 +282,12 @@ class AnkiGUI(tk.Tk):
             return  # generate_sentences() calls display_current_note() upon completion.
 
         # Retrieve stored sentences.
-        self.sentence1_jp, self.sentence1_en, self.sentence2_jp, self.sentence2_en = self.generated_sentences[note_id]
+        sentence1_jp, sentence1_en, sentence2_jp, sentence2_en = self.generated_sentences[note_id]
+        # Convert into TK.String
+        self.sentence1_en_var = tk.StringVar(value=sentence1_en)
+        self.sentence2_en_var = tk.StringVar(value=sentence2_en)
+        self.sentence1_jp_var = tk.StringVar(value=utils.generate_furigana_string(sentence1_jp, self.reading.get()))
+        self.sentence2_jp_var = tk.StringVar(value=utils.generate_furigana_string(sentence2_jp, self.reading.get()))
 
         # Reset keep checkboxes.
         self.keep_var1.set(False)
@@ -292,16 +297,18 @@ class AnkiGUI(tk.Tk):
         frame1 = tk.Frame(self.note_display_frame, bd=2, relief=tk.GROOVE, padx=5, pady=5)
         frame1.pack(fill=tk.X, pady=5)
         tk.Label(frame1, text="Sentence 1:", font=("Helvetica", 12, "bold")).pack(anchor="w")
-        tk.Label(frame1, text=utils.generate_furigana_string(self.sentence1_jp, self.reading.get()), wraplength=750, font=("Helvetica", 16)).pack(anchor="w", padx=10) # vorher mit Utils generate_furigana_string
-        tk.Label(frame1, text=f"Meaning: {self.sentence1_en}", fg="gray", wraplength=750).pack(anchor="w", padx=10)
+        tk.Entry(frame1, textvariable=self.sentence1_jp_var, width=50, font=("Helvetica", 16)).pack(anchor="w", fill=tk.X, padx=10) # vorher mit Utils generate_furigana_string
+        tk.Label(frame1, text="Meaning:", fg="gray").pack(anchor="w", padx=10)
+        tk.Entry(frame1, textvariable=self.sentence1_en_var, width=100, font=("Helvetica", 10)).pack(anchor="w", fill=tk.X, padx=10)
         tk.Checkbutton(frame1, text="Keep", variable=self.keep_var1).pack(anchor="e")
 
         # Sentence 2 section.
         frame2 = tk.Frame(self.note_display_frame, bd=2, relief=tk.GROOVE, padx=5, pady=5)
         frame2.pack(fill=tk.X, pady=5)
         tk.Label(frame2, text="Sentence 2:", font=("Helvetica", 12, "bold")).pack(anchor="w")
-        tk.Label(frame2, text=utils.generate_furigana_string(self.sentence2_jp, self.reading.get()), wraplength=750, font=("Helvetica", 16)).pack(anchor="w", padx=10)
-        tk.Label(frame2, text=f"Meaning: {self.sentence2_en}", fg="gray", wraplength=750).pack(anchor="w", padx=10)
+        tk.Entry(frame2, textvariable=self.sentence2_jp_var, width=100, font=("Helvetica", 16)).pack(anchor="w", fill=tk.X, padx=10) # vorher mit Utils generate_furigana_string
+        tk.Label(frame2, text="Meaning:", fg="gray").pack(anchor="w", padx=10)
+        tk.Entry(frame2, textvariable=self.sentence2_en_var, width=100, font=("Helvetica", 10)).pack(anchor="w", fill=tk.X, padx=10)
         tk.Checkbutton(frame2, text="Keep", variable=self.keep_var2).pack(anchor="e")
 
         # Regenerate button.
@@ -425,10 +432,10 @@ class AnkiGUI(tk.Tk):
         keep2_state = self.keep_var2.get()
 
         # Retrieve current stored sentences.
-        current_jp1 = self.sentence1_jp
-        current_en1 = self.sentence1_en
-        current_jp2 = self.sentence2_jp
-        current_en2 = self.sentence2_en
+        current_jp1 = self.sentence1_jp_var.get()
+        current_en1 = self.sentence1_en_var.get()
+        current_jp2 = self.sentence2_jp_var.get()
+        current_en2 = self.sentence2_en_var.get()
 
         try:
             # Use only the selected model from the dropdown
@@ -664,10 +671,10 @@ class AnkiGUI(tk.Tk):
         # Capture data from the CURRENT note for the background thread
         prev_note_id = self.notes[self.current_index]['noteId']
         prev_word = self.current_word
-        prev_sentence1_jp = self.sentence1_jp
-        prev_sentence1_en = self.sentence1_en
-        prev_sentence2_jp = self.sentence2_jp
-        prev_sentence2_en = self.sentence2_en
+        prev_sentence1_jp = self.sentence1_jp_var.get()
+        prev_sentence1_en = self.sentence1_en_var.get()
+        prev_sentence2_jp = self.sentence2_jp_var.get()
+        prev_sentence2_en = self.sentence2_en_var.get()
         prev_image_source = self.image_source
         prev_selected_image_url = self.selected_image_url
         prev_selected_local_path = self.selected_local_image_path
