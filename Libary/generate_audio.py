@@ -4,6 +4,7 @@ import sys
 import time
 import os
 import base64
+from gui.utils import remove_brackets  
 
 # Configuration
 ANKI_CONNECT_URL        = "http://localhost:8765"
@@ -47,7 +48,7 @@ def create_TTS(input_text):
     }
     payload = {
         "model": "tts-1",
-        "input": input_text,
+        "input": remove_brackets(input_text),
         "voice": "ja-JP-KeitaNeural",
         "speed": 0.8
     }
@@ -88,4 +89,9 @@ def store_note_audio_in_anki(sentence_text, output_filename):
     print("Anki media store result:", result)
     return output_filename
 
-# …rest of your script…
+if __name__ == "__main__":
+    input_string = "今日(きょう)はここに朝ご飯(あさごはん)を食べる(たべる)。"
+    clean_string = remove_brackets(input_string)
+
+    print(f"Input:  {input_string}")
+    print(f"Clean Sentance {clean_string}")

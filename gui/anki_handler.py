@@ -49,7 +49,7 @@ def get_formatted_japanisch_woerter_subdecks() -> list:
                 # However, get_subdeck_names usually returns only immediate children.
                 formatted_subdecks.append(deck) # Or decide to skip if not directly under with prefix
         
-        print(f"Formatted subdecks for '{parent_deck_name}': {formatted_subdecks}")
+        # print(f"Formatted subdecks for '{parent_deck_name}': {formatted_subdecks}")
         return formatted_subdecks
     except Exception as e:
         print(f"Error in anki_handler getting formatted subdecks for '{parent_deck_name}': {e}")
@@ -198,7 +198,7 @@ def update_anki_note_background(note_id, word, sentence1_jp, sentence1_en, sente
         print(f"Background: FAILED processing/updating note {note_id}: {e}")
         # Optionally return failure status
 
-def start_anki_update_thread(note_id, word, sentence1_jp, sentence1_en, sentence2_jp, sentence2_en, image_source, selected_image_url, selected_local_path, pasted_image_obj, target_deck_name):
+def start_anki_update_thread(note_id, word, sentence1_jp, sentence1_en, sentence2_jp, sentence2_en, image_source, selected_image_url, selected_local_path, pasted_image_obj, target_deck_name, reading):
     """Starts the background thread for updating Anki."""
     update_thread = threading.Thread(
         target=update_anki_note_background,

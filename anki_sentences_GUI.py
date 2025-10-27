@@ -20,6 +20,10 @@ class AnkiGUI(tk.Tk):
         config = config_handler.load_config()
         default_deck = config.get("deck", "") # Get saved deck or empty string
         default_model = config.get("ollama_model", "") # Get saved model or empty string
+        default_reading = config.get("reading", "")
+
+        # If the reading should be added by AI or pykakasi
+        self.reading = tk.StringVar(value=default_reading)
 
         self.selected_deck = tk.StringVar(value=default_deck)
         self.selected_target_deck_to_move = tk.StringVar() # For the new move-to-deck combobox
@@ -132,6 +136,13 @@ class AnkiGUI(tk.Tk):
         self.model_menu.pack(side=tk.LEFT, padx=5)
         tk.Button(model_frame, text="🔄", command=self.update_model_list).pack(side=tk.LEFT) # Refresh Model List
 
+        # Reading settings
+        tk.Label(model_frame, text="Model:").pack(side=tk.LEFT)
+        self.reading_menu = ttk.Combobox(model_frame, textvariable=self.reading,
+                                       values=["pykakasi", "AI"], state="readonly", width=10)
+        self.reading_menu.pack(side=tk.LEFT, padx=5)
+
+
 
         # Main frame for note details and sentence generation.
         self.note_display_frame = tk.Frame(self)
@@ -209,7 +220,8 @@ class AnkiGUI(tk.Tk):
                 # Save config after successfully loading a deck
                 config_handler.save_config({
                     "deck": self.selected_deck.get(),
-                    "ollama_model": self.selected_model.get()
+                    "ollama_model": self.selected_model.get(),
+                    "reading": self.reading.get()
                 })
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load deck '{deck_name}':\n{e}")
@@ -280,7 +292,7 @@ class AnkiGUI(tk.Tk):
         frame1 = tk.Frame(self.note_display_frame, bd=2, relief=tk.GROOVE, padx=5, pady=5)
         frame1.pack(fill=tk.X, pady=5)
         tk.Label(frame1, text="Sentence 1:", font=("Helvetica", 12, "bold")).pack(anchor="w")
-        tk.Label(frame1, text=utils.generate_furigana_string(self.sentence1_jp), wraplength=750, font=("Helvetica", 16)).pack(anchor="w", padx=10)
+        tk.Label(frame1, text=utils.generate_furigana_string(self.sentence1_jp, self.reading.get()), wraplength=750, font=("Helvetica", 16)).pack(anchor="w", padx=10) # vorher mit Utils generate_furigana_string
         tk.Label(frame1, text=f"Meaning: {self.sentence1_en}", fg="gray", wraplength=750).pack(anchor="w", padx=10)
         tk.Checkbutton(frame1, text="Keep", variable=self.keep_var1).pack(anchor="e")
 
@@ -288,7 +300,7 @@ class AnkiGUI(tk.Tk):
         frame2 = tk.Frame(self.note_display_frame, bd=2, relief=tk.GROOVE, padx=5, pady=5)
         frame2.pack(fill=tk.X, pady=5)
         tk.Label(frame2, text="Sentence 2:", font=("Helvetica", 12, "bold")).pack(anchor="w")
-        tk.Label(frame2, text=utils.generate_furigana_string(self.sentence2_jp), wraplength=750, font=("Helvetica", 16)).pack(anchor="w", padx=10)
+        tk.Label(frame2, text=utils.generate_furigana_string(self.sentence2_jp, self.reading.get()), wraplength=750, font=("Helvetica", 16)).pack(anchor="w", padx=10)
         tk.Label(frame2, text=f"Meaning: {self.sentence2_en}", fg="gray", wraplength=750).pack(anchor="w", padx=10)
         tk.Checkbutton(frame2, text="Keep", variable=self.keep_var2).pack(anchor="e")
 
@@ -337,7 +349,7 @@ class AnkiGUI(tk.Tk):
                 return
 
             # 2. Get recommendation from Ollama
-            print(f"Deck Pre-selection: Attempting for word '{self.current_word}' Meaning: {dictionary_meaning_for_prompt}")
+            # print(f"Deck Pre-selection: Attempting for word '{self.current_word}' Meaning: {dictionary_meaning_for_prompt}")
             recommended_short_deck_name = ollama_handler.get_recommended_deck(
                 vocabulary=self.current_word,
                 dictionary_meaning=dictionary_meaning_for_prompt,
@@ -352,9 +364,9 @@ class AnkiGUI(tk.Tk):
                 # 4. Check if this deck is in the current target deck options and set it
                 if full_recommended_deck_name in self.target_deck_options:
                     self.selected_target_deck_to_move.set(full_recommended_deck_name)
-                    print(f"Deck Pre-selection: Successfully pre-selected '{full_recommended_deck_name}'")
+                    # print(f"Deck Pre-selection: Successfully pre-selected '{full_recommended_deck_name}'")
                 else:
-                    print(f"Deck Pre-selection: Recommended deck '{full_recommended_deck_name}' not in target options: {self.target_deck_options}")
+                    print(f"Deck Pre-selection: Recommended deck '{full_recommended_deck_name}' not in target options") #: {self.target_deck_options}")
             else:
                 print("Deck Pre-selection: No recommendation received from Ollama.")
 
@@ -374,7 +386,7 @@ class AnkiGUI(tk.Tk):
 
         try:
             # Use only the selected model from the dropdown
-            jp1, en1, jp2, en2 = ollama_handler.generate_sentences(self.current_word, self.current_meaning, selected_model)
+            jp1, en1, jp2, en2 = ollama_handler.generate_sentences(self.current_word, self.current_meaning, selected_model, self.reading.get())
         except ValueError as ve: # Catch specific error from handler for better feedback
             messagebox.showwarning("Sentence Generation Error", str(ve))
             return
@@ -420,7 +432,7 @@ class AnkiGUI(tk.Tk):
 
         try:
             # Use only the selected model from the dropdown
-            new_jp1, new_en1, new_jp2, new_en2 = ollama_handler.generate_sentences(self.current_word, self.current_meaning, selected_model)
+            new_jp1, new_en1, new_jp2, new_en2 = ollama_handler.generate_sentences(self.current_word, self.current_meaning, selected_model,self.reading.get())
         except ValueError as ve: # Catch specific error from handler
             messagebox.showwarning("Sentence Generation Error", str(ve))
             return
@@ -637,7 +649,7 @@ class AnkiGUI(tk.Tk):
         else:
             self.selected_target_deck_to_move.set("")
             # messagebox.showinfo("Target Decks", "No target decks found for moving.") # Maybe too intrusive
-        print(f"Target decks for moving updated: {self.target_deck_options}")
+        # print(f"Target decks for moving updated: {self.target_deck_options}")
 
     def show_next_note(self):
         if not self.notes:
@@ -677,12 +689,14 @@ class AnkiGUI(tk.Tk):
                 prev_selected_image_url,
                 prev_selected_local_path,
                 prev_pasted_image_obj,
-                target_deck
+                target_deck,
+                self.reading.get()
             )
             # Save config when moving to the next note
             config_handler.save_config({
                 "deck": self.selected_deck.get(),
-                "ollama_model": self.selected_model.get()
+                "ollama_model": self.selected_model.get(),
+                "reading": self.reading.get()
             })
         else:
             # Reached the end: Process and update the LAST note
@@ -696,7 +710,8 @@ class AnkiGUI(tk.Tk):
                 prev_selected_image_url,
                 prev_selected_local_path,
                 prev_pasted_image_obj,
-                target_deck
+                target_deck,
+                self.reading.get()
             )
             messagebox.showinfo("Info", "Reached the end of the deck. Last note update started in background.")
             # Optionally, clear the display or disable "Next" further if desired
@@ -764,7 +779,7 @@ class AnkiGUI(tk.Tk):
                     self.selected_deck.set(self.available_decks[0])
                 else:
                     self.selected_deck.set("") # Should be redundant if above handles it
-            print(f"Main decks updated: {self.available_decks}")
+            # print(f"Main decks updated: {self.available_decks}")
             # Also refresh the target deck list as it depends on all_decks
             self.update_target_deck_list()
         except Exception as e:
@@ -792,7 +807,8 @@ class AnkiGUI(tk.Tk):
             if self.selected_model.get():
                 config_handler.save_config({
                     "deck": self.selected_deck.get(),
-                    "ollama_model": self.selected_model.get()
+                    "ollama_model": self.selected_model.get(),
+                    "reading": self.reading.get()
                 })
         except Exception as e:
             messagebox.showerror("Ollama Error", f"Could not fetch Ollama models:\n{e}")

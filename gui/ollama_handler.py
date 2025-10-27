@@ -40,7 +40,7 @@ def check_ollama_connection_status():
          print(f"Unexpected error checking Ollama connection: {e}")
          return ("Ollama: Error", "red")
 
-def generate_sentences(word, meaning, model_name):
+def generate_sentences(word, meaning, model_name, reading):
     """
     Generates two Japanese sentences and their English translations using Ollama.
     Returns a tuple: (jp1, en1, jp2, en2) or raises an exception on error.
@@ -50,15 +50,18 @@ def generate_sentences(word, meaning, model_name):
     if not word:
         raise ValueError("Word cannot be empty for sentence generation.")
 
+    word = word.replace("ꜜ", "").replace("ꜛ", "")
     try:
         # Call the function from the library module
-        jp1, en1, jp2, en2 = sentence_ai.ollama_sentances(word, meaning, model_name)
+        jp1, en1, jp2, en2 = sentence_ai.ollama_sentances(word, meaning, model_name, reading)
         # Process and convert sentences to plain text (handle potential None).
         plain_jp1 = jp1 if jp1 else ""
         plain_jp2 = jp2 if jp2 else ""
         plain_en1 = en1 if en1 else ""
         plain_en2 = en2 if en2 else ""
         print(f"Generated sentences for '{word}' using model '{model_name}'")
+        print(f"Japanese1: {plain_jp1} \n Japanese2: {plain_jp2}")
+
         return plain_jp1, plain_en1, plain_jp2, plain_en2
     except Exception as e:
         print(f"Error during sentence generation with Ollama: {e}")

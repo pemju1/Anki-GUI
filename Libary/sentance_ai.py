@@ -21,7 +21,8 @@ def query_ollama(system_prompt, user_input, model="gemma3:latest"):
                 "role": "user",
                 "content": user_input
             }
-        ]
+        ],
+        "think": False,
     }
 
     try:
@@ -47,12 +48,15 @@ def query_ollama(system_prompt, user_input, model="gemma3:latest"):
     except Exception as err:
         print(f"An error occurred: {err}")
 
-def ollama_sentances(word, dictionary, model_name, user_input=None):    
+def ollama_sentances(word, dictionary, model_name, reading="pykakasi"):    
     system_prompt = read_txt(r"Prompts\system_prompt.txt")
-    if user_input is None:
+    if reading == "pykakasi":
         user_input = read_txt(r"Prompts\user_prompt.txt").format(vocabulary=word,dictionary=dictionary)
+    else:
+        user_input = read_txt(r"Prompts\user_prompt_kanji.txt").format(vocabulary=word,dictionary=dictionary)
 
-    while True:
+    attempts = 3
+    while attempts > 0:
         example_sentances_list = []
         translations_list = []
 
@@ -62,13 +66,27 @@ def ollama_sentances(word, dictionary, model_name, user_input=None):
 
         if example_sentences:
             for sentence in example_sentences:
-                example_sentances_list.append(sentence)
+                index = sentence.find('。')
+                if index != -1:
+                    # Slice up to the index + 1 to include the character
+                    result = sentence[:index + 1]
+                else:
+                    result = sentence
+                example_sentances_list.append(result)
         if translations:
             for translation in translations:
-                translations_list.append(translation)
+                index = translation.find('。')
+                if index != -1:
+                    # Slice up to the index + 1 to include the character
+                    result = translation[:index + 1]
+                else:
+                    result = translation
+                translations_list.append(result)
         
         if len(example_sentances_list) == len(translations_list) == 2:
             return example_sentances_list[0], translations_list[0], example_sentances_list[1], translations_list[1]
+        attempts -= 1
+    print("Warnung max attempts reached" + attempts)
 
 
 

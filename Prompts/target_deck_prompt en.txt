@@ -1,5 +1,5 @@
 For the vocabulary {vocabulary}, with the meanings "{dictionary}" you have to select the most fitting vocabulary deck from this list {deck_list}.
-Be as specific as possible and if  possible do not use broad category like Substantive, Adjektive, Verben.
+Be as specific as possible and if  possible do not use broad category like Substantive, Adjektive, Verben or Wörter allgemein.
 Your answer must strictly follow this format:
 
 <deck> Name of the Deck </deck>  
