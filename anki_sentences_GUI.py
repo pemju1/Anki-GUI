@@ -283,11 +283,13 @@ class AnkiGUI(tk.Tk):
 
         # Retrieve stored sentences.
         sentence1_jp, sentence1_en, sentence2_jp, sentence2_en = self.generated_sentences[note_id]
+        if self.keep_var1.get() == False: sentence1_jp = utils.generate_furigana_string(sentence1_jp, self.reading.get())
+        if self.keep_var2.get() == False: sentence2_jp = utils.generate_furigana_string(sentence2_jp, self.reading.get())
         # Convert into TK.String
         self.sentence1_en_var = tk.StringVar(value=sentence1_en)
         self.sentence2_en_var = tk.StringVar(value=sentence2_en)
-        self.sentence1_jp_var = tk.StringVar(value=utils.generate_furigana_string(sentence1_jp, self.reading.get()))
-        self.sentence2_jp_var = tk.StringVar(value=utils.generate_furigana_string(sentence2_jp, self.reading.get()))
+        self.sentence1_jp_var = tk.StringVar(value=sentence1_jp)
+        self.sentence2_jp_var = tk.StringVar(value=sentence2_jp)
 
         # Reset keep checkboxes.
         self.keep_var1.set(False)
