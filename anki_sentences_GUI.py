@@ -682,6 +682,10 @@ class AnkiGUI(tk.Tk):
         prev_selected_local_path = self.selected_local_image_path
         prev_pasted_image_obj = self.pasted_image_object.copy() if self.pasted_image_object else None
 
+        # Reset keep checkboxes.
+        self.keep_var1.set(False)
+        self.keep_var2.set(False)
+        
         # Move to the NEXT note and display it IMMEDIATELY
         if self.current_index < len(self.notes) - 1:
             self.current_index += 1
